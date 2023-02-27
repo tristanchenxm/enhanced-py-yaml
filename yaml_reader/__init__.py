@@ -18,6 +18,29 @@ class YamlReader(object):
             self.config = {}
         self._resolve_placeholders()
 
+    def _resolve_placeholders(self) -> None:
+        flat_dict = {}
+        self._flatten_dict(self.config, flat_dict)
+        for k, v in flat_dict.items():
+            self._resolve_placeholders_0(flat_dict, k, v)
+
+    def _resolve_placeholders_0(self, flat_dict: dict, k:str, v: str) -> str:
+        if not isinstance(v, str):
+            return v
+        placeholders = re.findall('\\${([^}]+)}', v)
+        for placeholder in placeholders:
+            placeholder_value = os.environ.get(placeholder)
+            if placeholder_value:
+                v = v.replace('${' + placeholder + '}', placeholder_value)
+            else:
+                placeholder_value = flat_dict.get(placeholder)
+                if not placeholder_value:
+                    raise ValueError(placeholder + " is not configured")
+                v = v.replace('${' + placeholder + '}', str(self._resolve_placeholders_0(flat_dict, placeholder, placeholder_value)))
+        flat_dict[k] = v
+        self._replace_application_config(k, v)
+        return v
+
     def _flatten_dict(self, src: dict, target: dict, parent_key: str = None):
         def _concat(s1: str, s2: str):
             if s1:
@@ -49,23 +72,6 @@ class YamlReader(object):
             target[parent_key] = src
 
 
-    def _resolve_placeholders_0(self, flat_dict: dict, k:str, v: str) -> str:
-        if not isinstance(v, str):
-            return v
-        placeholders = re.findall('\\${([^}]+)}', v)
-        for placeholder in placeholders:
-            placeholder_value = os.environ.get(placeholder)
-            if placeholder_value:
-                v = v.replace('${' + placeholder + '}', placeholder_value)
-            else:
-                placeholder_value = flat_dict.get(placeholder)
-                if not placeholder_value:
-                    raise ValueError(placeholder + " is not configured")
-                v = v.replace('${' + placeholder + '}', str(self._resolve_placeholders_0(flat_dict, placeholder, placeholder_value)))
-        flat_dict[k] = v
-        self._replace_application_config(k, v)
-        return v
-
     def _replace_application_config(self, k, v):
         target_dict = self.config
         original_keys = k.split(".")
@@ -87,11 +93,7 @@ class YamlReader(object):
                 else:
                     target_dict = target_dict[original_key]
 
-    def _resolve_placeholders(self) -> None:
-        flat_dict = {}
-        self._flatten_dict(self.config, flat_dict)
-        for k, v in flat_dict.items():
-            self._resolve_placeholders_0(flat_dict, k, v)
+
 
 
     def get_config(self):
